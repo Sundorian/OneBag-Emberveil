@@ -1,6 +1,6 @@
 ## Interface: 11200
 ## Title: OneBank |cff7fff7f -Ace2-|r |cff00ff00Emberveil|r
-## Notes: Combined bank bags for OneBag. Fixed and updated by Fastshot for Emberveil / Unreal Azeroth.
+## Notes: Combined bank bags for OneBag. Fixed and updated by Fastshot/Sundorian for Emberveil / Unreal Azeroth.
 ## Version: 2.0.emberveil
 ## Author: Kaelten (original); Fastshot (Emberveil fix & update); Grok / xAI (port assistance)
 ## X-Original-Author: Kaelten
