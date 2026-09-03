@@ -6,7 +6,7 @@ Version: 2.0.emberveil
 Credits
 -------
 - Original addon: Kaelten (companion to OneBag)
-- Fixed and updated for Emberveil by: Fastshot
+- Fixed and updated for Emberveil by: Fastshot/Sundorian
 - Port / adaptation assistance: Grok (xAI)
 
 Description
@@ -46,4 +46,4 @@ Notes for Emberveil
 License / origin
 ----------------
 Based on the original OneBank by Kaelten.
-Emberveil fixes and updates by Fastshot, with assistance from Grok (xAI).
+Emberveil fixes and updates by Fastshot/Sundorian, with assistance from Grok (xAI).
