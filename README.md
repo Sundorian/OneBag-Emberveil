@@ -56,3 +56,8 @@ License / origin
 ----------------
 Based on the original OneBag by Kaelten (wowace.com era).
 Emberveil fixes and updates by Fastshot/Sundorian, with assistance from Grok (xAI).
+
+<img width="484" height="610" alt="OneBag1" src="https://github.com/user-attachments/assets/c7777aeb-5452-4e33-920a-4d2ad411120d" />  <img width="343" height="844" alt="OneBagOptions1" src="https://github.com/user-attachments/assets/bf4eb1e1-2af8-4193-bc4f-53ecd07829e2" />  <img width="510" height="624" alt="OneBank1" src="https://github.com/user-attachments/assets/39fdd557-d460-40ff-82be-5113586aba41" />
+
+
+
