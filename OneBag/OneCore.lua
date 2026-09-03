@@ -534,6 +534,29 @@ function module:BuildFrame()
 		if self.isBank and bag == (BANK_CONTAINER or -1) then
 			if size < 24 then size = 24 end
 		end
+		-- Keyring display: start at 4, grow in steps of 4 as keys are added
+		-- (Emberveil may report 12 physical slots; we only show what you need)
+		if (not self.isBank) and bag == (KEYRING_CONTAINER or -2) then
+			local maxSlots = size
+			if GetKeyRingSize then
+				local krSize = GetKeyRingSize()
+				if krSize and krSize > maxSlots then maxSlots = krSize end
+			end
+			if maxSlots < 1 then maxSlots = 12 end
+			local used = 0
+			for slot = 1, maxSlots do
+				local link = GetContainerItemLink(bag, slot)
+				if link then used = used + 1 end
+			end
+			-- 0-4 keys = 4 slots, 5-8 = 8, 9-12 = 12, etc.
+			local display = 4
+			while display < used do
+				display = display + 4
+			end
+			if display > maxSlots then display = maxSlots end
+			if display < 4 then display = 4 end
+			size = display
+		end
 		for slot = 1, size do
 			if not self.frame.bags[bag] then 
 				self.frame.bags[bag] = CreateFrame("Frame", tostring(self)..bag, self.frame)

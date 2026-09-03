@@ -6,7 +6,7 @@ Version: 2.0.emberveil
 Credits
 -------
 - Original addon: Kaelten (WoW Ace / classic OneBag)
-- Fixed and updated for Emberveil by: Fastshot/Sundorian
+- Fixed and updated for Emberveil by: Fastshot
 - Port / adaptation assistance: Grok (xAI)
 
 Description
@@ -49,4 +49,4 @@ Notes for Emberveil
 License / origin
 ----------------
 Based on the original OneBag by Kaelten (wowace.com era).
-Emberveil fixes and updates by Fastshot/Sundorian, with assistance from Grok (xAI).
+Emberveil fixes and updates by Fastshot, with assistance from Grok (xAI).

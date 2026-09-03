@@ -63,11 +63,105 @@ function OneBag:OnInitialize()
 	self:RegisterChatCommand({"/ob", "/OneBag"}, baseArgs, string.upper(self.title))
 	
 	--self:SetDebugging(true)
-	self.fBags			= {0, 1, 2, 3, 4}
-    self.rBags          = {4, 3, 2, 1, 0}
+	-- Keyring: KEYRING_CONTAINER is -2 on TBC-style clients; Emberveil may define it
+	local kr = KEYRING_CONTAINER or -2
+	self.keyringBag = kr
+	self.fBags			= {0, 1, 2, 3, 4, kr}
+    self.rBags          = {kr, 4, 3, 2, 1, 0}
 	
 	self.frame = nil
 	self._baseArgs = baseArgs
+end
+
+
+local function OneBag_KeyringId()
+	if OneBag and OneBag.keyringBag then return OneBag.keyringBag end
+	return KEYRING_CONTAINER or -2
+end
+
+local function OneBag_AddKeyringButton(bagBar)
+	if not bagBar or getglobal("OneBagBagBarBtnKey") then return end
+	bagBar:SetWidth(240)
+	local kr = OneBag_KeyringId()
+	local b = CreateFrame("Button", "OneBagBagBarBtnKey", bagBar)
+	b:SetWidth(34)
+	b:SetHeight(34)
+	b.bagId = kr
+	b:SetPoint("LEFT", bagBar, "LEFT", 5 * 38, 0)
+
+	local border = b:CreateTexture(nil, "BACKGROUND")
+	border:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+	border:SetWidth(56)
+	border:SetHeight(56)
+	border:SetPoint("CENTER", b, "CENTER", 0, 0)
+
+	local icon = b:CreateTexture(nil, "ARTWORK")
+	icon:SetWidth(30)
+	icon:SetHeight(30)
+	icon:SetPoint("CENTER", b, "CENTER", 0, 0)
+	icon:SetTexture("Interface\\ContainerFrame\\KeyRing-Bag-Icon")
+	if not icon:GetTexture() then
+		icon:SetTexture("Interface\\Buttons\\UI-Button-KeyRing")
+	end
+	if not icon:GetTexture() then
+		icon:SetTexture("Interface\\Icons\\INV_Misc_Key_03")
+	end
+	b.icon = icon
+
+	local hl = b:CreateTexture(nil, "HIGHLIGHT")
+	hl:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
+	hl:SetBlendMode("ADD")
+	hl:SetAllPoints(b)
+
+	b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	b:SetScript("OnClick", function()
+		local bag = this.bagId or OneBag_KeyringId()
+		if CursorHasItem() then
+			if PutKeyInKeyRing then
+				PutKeyInKeyRing()
+			elseif PutItemInBag then
+				PutItemInBag(bag)
+			end
+			return
+		end
+		if OneBag.db and OneBag.db.profile and OneBag.db.profile.show then
+			local cur = OneBag.db.profile.show[bag]
+			if cur == nil then cur = true end
+			OneBag.db.profile.show[bag] = not cur
+			OneBag:OrganizeFrame(true)
+			if OneBag.UpdateBag then OneBag:UpdateBag(bag) end
+			if OneBag.RefreshAllBags then OneBag:RefreshAllBags() end
+		end
+	end)
+	b:SetScript("OnEnter", function()
+		local bag = this.bagId or OneBag_KeyringId()
+		if OneBag and OneBag.HighlightBagSlots then
+			OneBag:HighlightBagSlots(bag)
+		end
+		GameTooltip:SetOwner(this, "ANCHOR_RIGHT")
+		GameTooltip:SetText(KEYRING or "Keyring")
+		GameTooltip:AddLine("Click to show/hide keys in OneBag", 0.7, 0.7, 0.7)
+		GameTooltip:Show()
+	end)
+	b:SetScript("OnLeave", function()
+		local bag = this.bagId or OneBag_KeyringId()
+		if OneBag and OneBag.UnhighlightBagSlots then
+			OneBag:UnhighlightBagSlots(bag)
+		end
+		GameTooltip:Hide()
+	end)
+	b:SetScript("OnUpdate", function()
+		local bag = this.bagId or OneBag_KeyringId()
+		if this.icon then
+			local dim = 1
+			if OneBag and OneBag.db and OneBag.db.profile and OneBag.db.profile.show then
+				local shown = OneBag.db.profile.show[bag]
+				if shown == nil then shown = true end
+				if not shown then dim = 0.4 end
+			end
+			this.icon:SetVertexColor(dim, dim, dim)
+		end
+	end)
 end
 
 function OneBag:SetupFrames()
@@ -273,6 +367,7 @@ function OneBag:SetupFrames()
 				end
 			end)
 		end
+		OneBag_AddKeyringButton(bagBar)
 	end
 
 	if getglobal("OneBagFrameName") then
@@ -406,6 +501,10 @@ function OneBag:SetupFrames()
 				end
 			end)
 		end
+		OneBag_AddKeyringButton(bagBar)
+	end
+	if frame.bagBar then
+		OneBag_AddKeyringButton(frame.bagBar)
 	end
 	frame.bagBar:SetFrameLevel((frame:GetFrameLevel() or 1) + 5)
 	frame.bagBar:Show()
@@ -435,7 +534,6 @@ end
 function OneBag:OnEnable()
 	self:SetupFrames()
 	if not self.frame then return end
-	-- Never leave the frame permanently unmovable
 	if self.db and self.db.profile then
 		self.db.profile.locked = false
 	end
