@@ -474,6 +474,190 @@ end
 
 local module = OneCore.modulePrototype
 
+-- Emberveil: never trust FrameXML click scripts for bank.
+-- Store bag/slot on the button and always use PickupContainerItem.
+function module:SlotEmpty(bag, slot)
+	local link = GetContainerItemLink(bag, slot)
+	if not link or link == "" then return true end
+	return false
+end
+
+function module:PickupSlot(bag, slot)
+	if bag == nil or slot == nil then return end
+	local bankId = BANK_CONTAINER or -1
+	if bag == bankId then
+		-- Emberveil main bank pane is inventory 40-63
+		local inv
+		if BankButtonIDToInvSlotID then
+			inv = BankButtonIDToInvSlotID(slot)
+		else
+			inv = slot + 39
+		end
+		if PickupInventoryItem then
+			PickupInventoryItem(inv)
+			return
+		end
+	end
+	if PickupContainerItem then
+		PickupContainerItem(bag, slot)
+	end
+end
+
+function module:BindItemButton(btn, bag, slot)
+	if not btn then return end
+	btn.obBag = bag
+	btn.obSlot = slot
+	btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+	btn:RegisterForDrag("LeftButton")
+	local function doPickup()
+		local b, s = this.obBag, this.obSlot
+		if b == nil or s == nil then return end
+		-- A bank bag on the cursor is equipment, not a container item.
+		-- Item squares must not "eat" it (drop sound, bag stays/unequips nowhere).
+		if OneCore._holdingBankBag and CursorHasItem and CursorHasItem() then
+			if b >= 0 and b <= 4 then
+				if PickupContainerItem then PickupContainerItem(b, s) end
+				if CursorHasItem() and PutItemInBackpack then PutItemInBackpack() end
+				if not CursorHasItem() then OneCore._holdingBankBag = nil end
+			end
+			return
+		end
+		local bankId = BANK_CONTAINER or -1
+		local heldB, heldS = OneBank and OneBank._heldBag, OneBank and OneBank._heldSlot
+		local hB = OneCore._heldBag
+		local hS = OneCore._heldSlot
+		if CursorHasItem() then
+			local fromBankBag = hB and hB >= 5 and hB <= 10
+			local toMain = (b == bankId)
+			local fromMain = hB and hB == bankId
+			local toBankBag = b and b >= 5 and b <= 10
+			-- Only infer extra-bank source if we do not already know it is a player bag
+			if toMain and not fromMain and not fromBankBag then
+				if (not hB) or (hB >= 5 and hB <= 10) then
+					fromBankBag = true
+				end
+			end
+			if fromMain and toBankBag then
+				-- Drop on the exact slot the user clicked (PutItemInBag auto-fills first free).
+				if PickupContainerItem then PickupContainerItem(b, s) end
+			elseif fromBankBag and toMain then
+				-- Emberveil often "eats" a failed -1 drop: cursor clears and
+				-- the item snaps back. Only skip the hop if the pane slot filled.
+				local before = GetContainerItemLink(b, s)
+				if PickupContainerItem then PickupContainerItem(b, s) end
+				local after = GetContainerItemLink(b, s)
+				local landed = after and after ~= "" and after ~= before
+				if not landed then
+					if (not CursorHasItem()) and hB and hS and PickupContainerItem then
+						PickupContainerItem(hB, hS)
+					end
+					local parkBag, parkSlot
+					local function bagIsSpecial(pb)
+						if pb == 0 then return false end
+						local n = string.lower(tostring(GetBagName and GetBagName(pb) or ""))
+						if n == "" then return false end
+						if string.find(n, "quiver") or string.find(n, "ammo") or string.find(n, "pouch") then
+							return true
+						end
+						if string.find(n, "soul") or string.find(n, "enchant") or string.find(n, "herb") then
+							return true
+						end
+						return false
+					end
+					for pb = 0, 4 do
+						if not bagIsSpecial(pb) then
+							for ps = 1, (GetContainerNumSlots(pb) or 0) do
+								local link = GetContainerItemLink(pb, ps)
+								if not link or link == "" then
+									parkBag, parkSlot = pb, ps
+									break
+								end
+							end
+						end
+						if parkBag then break end
+					end
+					if parkBag and PickupContainerItem then
+						PickupContainerItem(parkBag, parkSlot)
+						OneCore._pendingDeposit = { bag = parkBag, slot = parkSlot }
+						local function tryDeposit()
+							local pend = OneCore._pendingDeposit
+							if not pend then return end
+							if UseContainerItem then UseContainerItem(pend.bag, pend.slot) end
+							if CursorHasItem() and ClearCursor then ClearCursor() end
+							OneCore._pendingDeposit = nil
+						end
+						if OneBank and OneBank.ScheduleEvent then
+							OneBank:ScheduleEvent(tryDeposit, 0.35)
+						else
+							local f = OneCore._depositFrame
+							if not f then
+								f = CreateFrame("Frame")
+								OneCore._depositFrame = f
+							end
+							f.t = 0
+							f:SetScript("OnUpdate", function()
+								this.t = (this.t or 0) + 0.05
+								if this.t < 0.35 then return end
+								this:SetScript("OnUpdate", nil)
+								this.t = 0
+								tryDeposit()
+							end)
+						end
+					else
+						DEFAULT_CHAT_FRAME:AddMessage("|cffffff00OneBank: need one empty normal bag slot to move extra-bank items into the main pane.|r")
+						if CursorHasItem() and hB and hS and PickupContainerItem then
+							PickupContainerItem(hB, hS)
+						end
+					end
+				end
+			else
+				if PickupContainerItem then PickupContainerItem(b, s) end
+			end
+			OneCore._heldBag, OneCore._heldSlot = nil, nil
+		else
+			if PickupContainerItem then PickupContainerItem(b, s) end
+			OneCore._heldBag, OneCore._heldSlot = b, s
+			OneCore._heldLink = GetContainerItemLink(b, s)
+		end
+	end
+	btn:SetScript("OnMouseDown", function()
+		if not CursorHasItem() then
+			OneCore._heldBag, OneCore._heldSlot = this.obBag, this.obSlot
+		end
+	end)
+	btn:SetScript("OnClick", function()
+		local b, s = this.obBag, this.obSlot
+		local shift = IsShiftKeyDown and IsShiftKeyDown()
+		local ctrl = IsControlKeyDown and IsControlKeyDown()
+		if (shift or ctrl) and not CursorHasItem() then
+			local link = GetContainerItemLink and GetContainerItemLink(b, s)
+			if link and link ~= "" then
+				-- Shift: chat link (vanilla). Ctrl: preview; also link if chat box is open.
+				if shift or (ChatFrameEditBox and ChatFrameEditBox:IsVisible()) then
+					if ChatEdit_InsertLink then
+						ChatEdit_InsertLink(link)
+					elseif ChatFrameEditBox and ChatFrameEditBox.Insert then
+						ChatFrameEditBox:Insert(link)
+					end
+				end
+				if ctrl and DressUpItemLink then
+					DressUpItemLink(link)
+				end
+			end
+			return
+		end
+		if arg1 == "RightButton" and not CursorHasItem() then
+			if UseContainerItem then UseContainerItem(b, s) end
+			return
+		end
+		if arg1 == "LeftButton" or arg1 == nil then
+			doPickup()
+		end
+	end)
+	btn:SetScript("OnDragStart", function() doPickup() end)
+	btn:SetScript("OnReceiveDrag", function() doPickup() end)
+end
+
 function module:BuildFrame()
 	debugprofilestart()
 	-- Ensure layout metrics exist before creating/sizing buttons (fixes first-open overflow)
@@ -523,6 +707,7 @@ function module:BuildFrame()
 					icon:SetPoint("CENTER", btn, "CENTER", 0, 0)
 				end
 				self.frame.bags[bankId][slot] = btn
+				self:BindItemButton(btn, bankId, slot)
 			end
 			self.needToOrganize = true
 		end
@@ -570,6 +755,7 @@ function module:BuildFrame()
 				end
 				local btn = CreateFrame("Button", tostring(self)..bag.."Item"..slot, self.frame.bags[bag], tmpl)
 				btn:SetID(slot)
+				self:BindItemButton(btn, bag, slot)
 				local sz = self.btnSize or 37
 				btn:SetWidth(sz)
 				btn:SetHeight(sz)
@@ -619,7 +805,24 @@ function module:BuildFrame()
 	self:Debug(L"%s ran in %s", "BuildFrame", debugprofilestop())
 end
 
+function module:RebindAllItemButtons()
+	if not self.frame or not self.frame.bags then return end
+	local bags = self.fBags or {}
+	for _, bag in pairs(bags) do
+		local bagFrame = self.frame.bags[bag]
+		if bagFrame then
+			local size = bagFrame.size or GetContainerNumSlots(bag) or 0
+			if self.isBank and bag == (BANK_CONTAINER or -1) then size = 24 end
+			for slot = 1, size do
+				local btn = bagFrame[slot]
+				if btn then self:BindItemButton(btn, bag, slot) end
+			end
+		end
+	end
+end
+
 function module:OrganizeFrame(needs)
+
 	debugprofilestart()
 	if not self.needToOrganize and not needs then return end
 	self.needToOrganize = false
@@ -865,7 +1068,23 @@ function module:UpdateBag(bag)
 	end
 	
 	if self.frame.bags[bag].size and self.frame.bags[bag].size > 0 then
-		ContainerFrame_Update(self.frame.bags[bag])
+		local bankId = BANK_CONTAINER or -1
+		if bag ~= bankId and ContainerFrame_Update then
+			ContainerFrame_Update(self.frame.bags[bag])
+		end
+		if bag == bankId then
+			for slot = 1, 24 do
+				local btn = self.frame.bags[bag][slot]
+				if btn then
+					local tex = GetContainerItemInfo(bag, slot)
+					if tex == "" then tex = nil end
+					local icon = getglobal(btn:GetName().."IconTexture")
+					if icon then
+						if tex then icon:SetTexture(tex); icon:Show() else icon:SetTexture(nil); icon:Hide() end
+					end
+				end
+			end
+		end
 		local sz = self.btnSize or 37
 		local iw = sz * (32 / 37)
 		local bgSize = sz * (64 / 37)
@@ -1283,7 +1502,7 @@ function module:ShowOptionsFrame()
 	if not mod.optionsFrame then
 		local f = CreateFrame("Frame", frameName, UIParent)
 		f:SetWidth(300)
-		f:SetHeight(780)
+		f:SetHeight(self.isBank and 860 or 780)
 		f:SetFrameStrata("HIGH")
 		f:SetMovable(true)
 		f:EnableMouse(true)
@@ -1459,13 +1678,23 @@ function module:ShowOptionsFrame()
 
 		-- Manual bag type (Emberveil can't always detect ammo/soul/prof bags)
 		if not self.db.profile.bagTypes then
-			self.db.profile.bagTypes = {[1]="auto",[2]="auto",[3]="auto",[4]="auto"}
+			self.db.profile.bagTypes = {}
 		end
 		local typeNames = {auto = "Auto", normal = "Normal", ammo = "Ammo", soul = "Soul", prof = "Prof"}
 		local typeOrder = {"auto", "normal", "ammo", "soul", "prof"}
-		for bagId = 1, 4 do
-			addButton("Bag "..bagId.." type: "..(typeNames[self.db.profile.bagTypes[bagId] or "auto"] or "Auto"),
-				"Click to cycle this bag's type so coloring works (set your ammo bag to Ammo).",
+		local typeBags, typeLabel
+		if self.isBank then
+			typeBags = {5, 6, 7, 8, 9, 10}
+			typeLabel = "Bank bag"
+		else
+			typeBags = {1, 2, 3, 4}
+			typeLabel = "Bag"
+		end
+		for _, bagId in ipairs(typeBags) do
+			local shown = bagId
+			if self.isBank then shown = bagId - 4 end
+			addButton(typeLabel.." "..shown.." type: "..(typeNames[self.db.profile.bagTypes[bagId] or "auto"] or "Auto"),
+				"Click to cycle this bag's type so coloring works.",
 				function()
 					local cur = self.db.profile.bagTypes[bagId] or "auto"
 					local nextType = "auto"
@@ -1476,7 +1705,7 @@ function module:ShowOptionsFrame()
 						end
 					end
 					self.db.profile.bagTypes[bagId] = nextType
-					this:SetText("Bag "..bagId.." type: "..(typeNames[nextType] or nextType))
+					this:SetText(typeLabel.." "..shown.." type: "..(typeNames[nextType] or nextType))
 					self.needToOrganize = true
 					self:BuildFrame()
 					self:OrganizeFrame(true)
@@ -1593,6 +1822,12 @@ function module:ShowOptionsFrame()
 		end)
 		padSlider:SetScript("OnLeave", function() GameTooltip:Hide() end)
 		y = y - 40
+
+		-- Grow the frame so the last slider stays inside the border
+		local need = (-y) + 24
+		if need > f:GetHeight() then
+			f:SetHeight(need)
+		end
 
 		f.colsSlider = colsSlider
 		f.scaleSlider = scaleSlider

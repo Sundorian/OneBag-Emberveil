@@ -183,8 +183,50 @@ local function SetupBankFrame(self)
 		hl:SetAllPoints(b)
 
 		b:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+		b:RegisterForDrag("LeftButton")
+		local function bankBagInv(bag)
+			if not bag or bag < 5 or bag > 10 then return nil end
+			if ContainerIDToInventoryID then
+				local inv = ContainerIDToInventoryID(bag)
+				if inv then return inv end
+			end
+			if BankButtonIDToInvSlotID then
+				local inv = BankButtonIDToInvSlotID(bag - 4, 1)
+				if inv then return inv end
+			end
+			return bag + 59
+		end
+		local function swapBankBag(bag)
+			local inv = bankBagInv(bag)
+			if not inv or not PickupInventoryItem then return end
+			local had = CursorHasItem and CursorHasItem()
+			PickupInventoryItem(inv)
+			if (not had) and CursorHasItem and CursorHasItem() then
+				OneCore._holdingBankBag = true
+			elseif had and CursorHasItem and not CursorHasItem() then
+				OneCore._holdingBankBag = nil
+			elseif had then
+				OneCore._holdingBankBag = nil
+			end
+		end
 b:SetScript("OnClick", function()
 			local bag = this.bagId
+			if CursorHasItem() then
+				if bag and bag >= 5 and bag <= 10 then
+					swapBankBag(bag)
+				elseif bag == (BANK_CONTAINER or -1) then
+					for s = 1, 24 do
+						local link = GetContainerItemLink(-1, s)
+						if not link or link == "" then
+							if PickupContainerItem then PickupContainerItem(-1, s) end
+							break
+						end
+					end
+				elseif PutItemInBag then
+					PutItemInBag(bag)
+				end
+				return
+			end
 			-- Unpurchased bank bag slots: buy like the default bank UI
 			if bag >= 5 and bag <= 10 then
 				local purchased = 0
@@ -194,7 +236,6 @@ b:SetScript("OnClick", function()
 				local slotIndex = bag - 4
 				if slotIndex > purchased then
 					if slotIndex == purchased + 1 then
-						-- Always ask first — never purchase immediately
 						if StaticPopup_Show then
 							StaticPopup_Show("ONEBANK_CONFIRM_BUY_BANK_SLOT")
 						else
@@ -206,22 +247,38 @@ b:SetScript("OnClick", function()
 					return
 				end
 			end
-			if CursorHasItem() then
-				if PutItemInBag then PutItemInBag(bag) end
-				return
-			end
-			if OneBank.db and OneBank.db.profile and OneBank.db.profile.show then
-				local cur = OneBank.db.profile.show[bag]
-				if cur == nil then cur = true end
-				OneBank.db.profile.show[bag] = not cur
-				OneBank:OrganizeFrame(true)
-				if OneBank.RefreshAllBags then
-					OneBank:RefreshAllBags()
-				else
-					for _, id in pairs(OneBank.fBags or {}) do
-						OneBank:UpdateBag(id)
+			-- Right-click: show/hide this bag in the combined frame
+			if arg1 == "RightButton" then
+				if OneBank.db and OneBank.db.profile and OneBank.db.profile.show then
+					local cur = OneBank.db.profile.show[bag]
+					if cur == nil then cur = true end
+					OneBank.db.profile.show[bag] = not cur
+					OneBank:OrganizeFrame(true)
+					if OneBank.RefreshAllBags then
+						OneBank:RefreshAllBags()
+					else
+						for _, id in pairs(OneBank.fBags or {}) do
+							OneBank:UpdateBag(id)
+						end
 					end
 				end
+				return
+			end
+			-- Left-click empty cursor: pick up bag via inventory slot
+			if bag >= 5 and bag <= 10 then
+				swapBankBag(bag)
+			end
+		end)
+		b:SetScript("OnDragStart", function()
+			local bag = this.bagId
+			if bag and bag >= 5 and bag <= 10 then
+				swapBankBag(bag)
+			end
+		end)
+		b:SetScript("OnReceiveDrag", function()
+			local bag = this.bagId
+			if bag and bag >= 5 and bag <= 10 then
+				swapBankBag(bag)
 			end
 		end)
 		b:SetScript("OnEnter", function()
@@ -256,7 +313,8 @@ b:SetScript("OnClick", function()
 					if not inv or not GameTooltip:SetInventoryItem("player", inv) then
 						GameTooltip:SetText("Bank Bag "..slotIndex)
 					end
-					GameTooltip:AddLine("Click to show/hide this bag in OneBank", 0.7, 0.7, 0.7)
+					GameTooltip:AddLine("Left-click to pick up / move this bag", 0.7, 0.7, 0.7)
+					GameTooltip:AddLine("Right-click to show/hide it in OneBank", 0.7, 0.7, 0.7)
 				end
 			end
 			GameTooltip:Show()
@@ -406,6 +464,28 @@ function OneBank:OnEnable()
 	if not self.frame then return end
 
 	self.frame:SetClampedToScreen(true)
+
+	-- Click banker once: skip "check my bags" gossip and open the bank
+	self:RegisterEvent("GOSSIP_SHOW", function()
+		if not GetGossipOptions or not SelectGossipOption then return end
+		local opts = { GetGossipOptions() }
+		local n = table.getn(opts)
+		local idx = 0
+		for i = 1, n, 2 do
+			idx = idx + 1
+			local text = string.lower(tostring(opts[i] or ""))
+			local typ = string.lower(tostring(opts[i + 1] or ""))
+			if typ == "banker"
+				or string.find(text, "bank", 1, true)
+				or string.find(text, "bag", 1, true)
+				or string.find(text, "vault", 1, true)
+				or string.find(text, "storage", 1, true)
+			then
+				SelectGossipOption(idx)
+				return
+			end
+		end
+	end)
 
 	self:RegisterEvent("BAG_UPDATE", function()
 		if arg1 and (arg1 == -1 or (arg1 >= 5 and arg1 <= 10)) then
